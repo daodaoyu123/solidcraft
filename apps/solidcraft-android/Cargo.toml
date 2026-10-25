@@ -1,0 +1,34 @@
+[package]
+name = "solidcraft-android"
+description = "SolidCraft on Android (eframe + winit NativeActivity, wgpu: Vulkan with GLES fallback)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+# Not the workspace lints: android_main must be #[unsafe(no_mangle)] for NativeActivity to find it.
+[lints.rust]
+unsafe_code = "allow"
+
+[lib]
+name = "solidcraft_android"
+crate-type = ["cdylib"]
+path = "src/lib.rs"
+
+[target.'cfg(target_os = "android")'.dependencies]
+solidcraft-engine = { workspace = true }
+solidcraft-ui-egui = { workspace = true }
+egui = { workspace = true }
+log = { workspace = true }
+eframe = { workspace = true, features = ["default_fonts", "wgpu", "android-native-activity"] }
+android_logger = "0.15"
+serde = { workspace = true }
+serde_json = { workspace = true }
+# MainActivity.java (pickers, clipboard, keyboard) through JNI; ndk-context holds the VM and activity.
+jni = "0.21"
+ndk-context = "0.1"
+# AndroidApp for android_main; the same winit as eframe's, which does not re-export it.
+winit = { version = "0.30", default-features = false, features = ["android-native-activity"] }
+# Network (SMB) locations in the file dialogs: a pure-Rust SMB 2/3 client (MIT), blocking API
+# on worker threads; NTLM through sspi, SMB3 signing and encryption.
+smb = { version = "0.12.1", default-features = false, features = ["sign", "encrypt", "multi_threaded"] }

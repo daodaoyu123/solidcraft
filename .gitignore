@@ -11,3 +11,7 @@ __pycache__/
 
 # cargo-mutants output (docs/mutation-testing.md)
 mutants.out*/
+
+# Android build outputs and emulator test captures
+/dist/android/apk/
+/dist/android/emulator_test/
