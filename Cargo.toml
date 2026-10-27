@@ -166,3 +166,13 @@ egui-wgpu = { path = "vendor/egui-wgpu" }
 [profile.mutants]
 inherits = "ci"
 incremental = true
+
+# Android phone APK, smallest .so (apps/solidcraft-android). Unwinding stays on: the engine catches
+# kernel panics with catch_unwind, so panic = "abort" would turn a failed feature into a crash.
+[profile.android-small]
+inherits = "release"
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+debug = false
+strip = true

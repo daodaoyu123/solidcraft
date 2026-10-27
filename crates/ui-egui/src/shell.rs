@@ -130,6 +130,12 @@ pub(crate) fn covered(app: &SolveApp, p: egui::Pos2) -> bool {
     covered_rects(app).iter().any(|r| r.contains(p))
 }
 
+/// Whether a screen point is on the 3D view itself, with no panel, card or dialog over it. The
+/// Android build sends touches there to the camera instead of the pointer.
+pub fn on_model_view(app: &SolveApp, p: egui::Pos2) -> bool {
+    app.viewport.rect.is_some_and(|r| r.contains(p)) && !covered(app, p)
+}
+
 /// Space reserved below viewport overlays by the floating History card. Its rect is set before
 /// the viewport is painted, so showing or hiding History takes effect in the same frame. History
 /// docked as the left sidebar sits beside the viewport, not below it, so it reserves nothing.

@@ -267,7 +267,6 @@ impl Chooser {
                 None => all.push(c),
             }
         }
-        core::forget(&c.id);
         save_conns().map_err(|e| format!("Couldn't save the connection: {e}"))?;
         if let Some(a) = &mut self.active {
             a.page = Page::Choose;
@@ -376,17 +375,12 @@ impl Chooser {
         self.take_requests(ctx);
         self.take_messages(ctx);
         for (t, ans) in bridge::take_smb_conn_answers() {
-            if let Some(a) = &mut self.active {
-                if a.token as i32 == t {
-                    match ans {
-                        Some(js) => {
-                            if let Err(e) = self.apply_java_conn(&js) {
-                                a.error = Some(e);
-                            } else {
-                                a.error = None;
-                            }
-                        }
-                        None => {}
+            let apply = self.active.as_ref().filter(|a| a.token as i32 == t).map(|_| ans);
+            if let Some(Some(js)) = apply {
+                let result = self.apply_java_conn(&js);
+                if let Some(a) = &mut self.active {
+                    if a.token as i32 == t {
+                        a.error = result.err();
                     }
                 }
             }

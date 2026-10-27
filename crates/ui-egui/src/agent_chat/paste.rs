@@ -31,11 +31,25 @@ pub struct System;
 
 impl Clipboard for System {
     fn files(&mut self) -> Vec<PathBuf> {
-        arboard::Clipboard::new().and_then(|mut c| c.get().file_list()).unwrap_or_default()
+        #[cfg(target_os = "android")]
+        {
+            Vec::new()
+        }
+        #[cfg(not(target_os = "android"))]
+        {
+            arboard::Clipboard::new().and_then(|mut c| c.get().file_list()).unwrap_or_default()
+        }
     }
     fn picture(&mut self) -> Option<Picture> {
-        let i = arboard::Clipboard::new().and_then(|mut c| c.get_image()).ok()?;
-        Some(Picture { width: i.width, height: i.height, rgba: i.bytes.into_owned() })
+        #[cfg(target_os = "android")]
+        {
+            None
+        }
+        #[cfg(not(target_os = "android"))]
+        {
+            let i = arboard::Clipboard::new().and_then(|mut c| c.get_image()).ok()?;
+            Some(Picture { width: i.width, height: i.height, rgba: i.bytes.into_owned() })
+        }
     }
 }
 
