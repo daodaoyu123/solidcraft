@@ -11,7 +11,12 @@
 **Build and modification details:** [android/README.md](android/README.md)  
 **Latest APK:** [github.com/johnrcassidy/solidcraft/releases](https://github.com/johnrcassidy/solidcraft/releases) (tag `v*-android*`)
 
-Upstream coordination: [tangency-labs/solidcraft#2412](https://github.com/tangency-labs/solidcraft/pull/2412).
+## Reach SolidCraft maintainers (tangency-labs)
+
+1. **Issue [#2828](https://github.com/tangency-labs/solidcraft/issues/2828)** — native Android (public thread for this fork).
+2. **Existing Android PRs** — [#2412](https://github.com/tangency-labs/solidcraft/pull/2412), [#2658](https://github.com/tangency-labs/solidcraft/pull/2658); coordinate before opening another large port PR.
+3. **[Discord](https://discord.gg/FtU4NQNVDH)** — short intro + links above if GitHub is quiet.
+4. **[CONTRIBUTING.md](https://github.com/tangency-labs/solidcraft/blob/main/CONTRIBUTING.md)** — draft PR, `approved-for-ci`, one topic per change.
 
 ## Commits and tags (so work is not lost in history)
 
