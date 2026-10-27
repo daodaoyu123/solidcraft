@@ -161,11 +161,26 @@ fn about(app: &mut SolveApp, ctx: &egui::Context) {
         .cards(2.0)
         .actions("", "Close", None)
         .show(ctx, true, |ui| {
-            ui_kit::text(
-                ui,
-                &crate::i18n::format("help.build", &[("version", VERSION), ("commit", COMMIT), ("date", BUILD_DATE)]),
-                ui_kit::Text::Report("version", false),
-            );
+            let build = crate::i18n::format("help.build", &[("version", VERSION), ("commit", COMMIT), ("date", BUILD_DATE)]);
+            #[cfg(target_os = "android")]
+            {
+                let resp = ui.add(egui::Label::new(&build).sense(egui::Sense::click()));
+                if resp.clicked() {
+                    let n = ctx.data_mut(|d| {
+                        let c = d.get_temp_mut_or_insert_with(egui::Id::new("sc_olympus_taps"), || 0u32);
+                        *c += 1;
+                        *c
+                    });
+                    if n >= 7 {
+                        app.set_status("Now we emerge from the shadows like Gods on Mount Olympus — JC.", false);
+                        ctx.data_mut(|d| d.insert_temp(egui::Id::new("sc_olympus_taps"), 0u32));
+                    }
+                }
+            }
+            #[cfg(not(target_os = "android"))]
+            {
+                ui_kit::text(ui, &build, ui_kit::Text::Report("version", false));
+            }
             ui_kit::text(
                 ui,
                 crate::i18n::tr_label("Open-source parametric 3D CAD in Rust. Licensed MIT OR Apache-2.0."),
