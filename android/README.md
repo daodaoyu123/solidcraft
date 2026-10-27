@@ -4,6 +4,8 @@ This tree is **not** the desktop app. It is the **Android APK** build: a native 
 
 Until this lands on [tangency-labs/solidcraft](https://github.com/tangency-labs/solidcraft) `main`, treat it as a **branch/fork deliverable**: installable APKs are published separately (for example [johnrcassidy/solidcraft releases](https://github.com/johnrcassidy/solidcraft/releases)) with a **`versionName` like `0.22.1-android1`**, which tracks the **workspace engine version** (`0.22.1`) plus an Android-only build number (`android1`, `android2`, …).
 
+**Discoverability:** repo root [ANDROID.md](../ANDROID.md) (banner on [README.md](../README.md)); commits use the `android:` prefix; tags `v*-android*`.
+
 | Label | Meaning |
 |--------|---------|
 | `Cargo.toml` `version` | Engine/UI library line (should match the upstream release you synced from). |

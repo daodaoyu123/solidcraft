@@ -11,6 +11,13 @@
   model through the built-in MCP server.
 </p>
 
+<p align="center">
+  <strong>Android APK (this fork only):</strong>
+  branch <code>android</code> — unofficial phone/tablet builds, not desktop.
+  <a href="ANDROID.md">ANDROID.md</a> ·
+  <a href="https://github.com/johnrcassidy/solidcraft/releases">APK releases</a>
+</p>
+
 <div align="center">
 
 [![Download for Windows][badge-windows]][windows-msi]
