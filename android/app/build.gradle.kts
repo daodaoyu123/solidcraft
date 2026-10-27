@@ -7,8 +7,8 @@ android {
         applicationId = "io.archipelagos.solidcraft"
         minSdk = 26
         targetSdk = 37
-        versionCode = 2201
-        versionName = "0.22.1-android1"
+        versionCode = 2202
+        versionName = "0.22.1-android2"
         ndk { abiFilters += ((project.findProperty("abis") as String?) ?: "arm64-v8a,x86_64").split(",") }
     }
     buildTypes {
