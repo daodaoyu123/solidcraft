@@ -395,6 +395,17 @@ impl CjkFontLoader {
     }
 }
 
+/// Android 版随 APK 编入的简体中文字体：Noto Sans SC 子集（GB2312 全集 + JIS 第一水准汉字 +
+/// 假名，单一 face，约 2.5 MB）。
+///
+/// 桌面系统能按固定路径找到 CJK 字体，Android 不能：`/system/fonts` 里只有
+/// `NotoSansCJK-Regular.ttc`，而该字体集合的第 0 个 face 是日文，简体专用字（设、页、们…）
+/// 不在其中；`egui::FontData` 取 index 0，于是简体中文整片画成空方框（与 #3376 同源）。
+/// 与其在运行时挑 ttc 的 face 索引（`FontData` 只带一个 index，且要跟着每个候选文件走），
+/// 不如直接带一份单 face 字体，索引恒为 0。
+#[cfg(target_os = "android")]
+const BUNDLED_CHINESE_FONT: &[u8] = include_bytes!("../assets/fonts/NotoSansSC-Regular-subset.ttf");
+
 /// Candidate font paths to look for on different operating systems.
 #[cfg(not(target_arch = "wasm32"))]
 const FONT_CANDIDATES: &[&str] = &[
@@ -437,6 +448,11 @@ const FONT_CANDIDATES: &[&str] = &[
     "/usr/share/fonts/opentype/ipaexfont/ipaexg.ttf",
     "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
     "/usr/share/fonts/cjkuni-uming/uming.ttc",
+    // Android：ROM 自带的单 face 中文字体。排在内置字体之后，只作兜底——
+    // NotoSansCJK-Regular.ttc 的 face 0 是日文，命中它也只是"部分汉字能显示"。
+    "/system/fonts/NotoSansSC-Regular.otf",
+    "/system/fonts/NotoSansCJK-Regular.ttc",
+    "/system/fonts/DroidSansFallback.ttf",
 ];
 
 /// Hangul fonts, appended after the CJK fallback so Korean renders even when the CJK font found
@@ -569,6 +585,12 @@ fn font_override_dirs(dirs: Option<std::ffi::OsString>, pack: Option<std::ffi::O
 /// Find a CJK fallback font on the local system or in SOLIDCRAFT_FONT_DIRS / CRAFT_FONTS_DIR.
 #[cfg(not(target_arch = "wasm32"))]
 fn find_system_cjk_font() -> Option<Vec<u8>> {
+    // 0. Android：优先用编入 APK 的简体中文字体（系统 ttc 的 face 0 是日文，见 BUNDLED_CHINESE_FONT）。
+    #[cfg(target_os = "android")]
+    if ttf_parser::Face::parse(BUNDLED_CHINESE_FONT, 0).is_ok() {
+        return Some(BUNDLED_CHINESE_FONT.to_vec());
+    }
+
     // 1. Check the font folders the user named.
     for dir in font_override_dirs(std::env::var_os("SOLIDCRAFT_FONT_DIRS"), std::env::var_os("CRAFT_FONTS_DIR")) {
         let names = ["BIZUDPGothic-Regular.ttf", "BIZ-UDGothicR.ttc", "NotoSansCJK-Regular.ttc", "NotoSansJP-Regular.ttf"];

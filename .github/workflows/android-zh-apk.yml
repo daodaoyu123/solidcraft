@@ -1,0 +1,144 @@
+# 构建「中文可见」的 SolidCraft APK
+#
+# 用途：在 GitHub 的云端 runner 上编译 android 分支的 Rust .so 并打包成 APK，
+#       其中 crates/ui-egui 已通过 patch/0001 把子集化的 Noto Sans SC 编入二进制，
+#       因此 Android 上切到「中文」界面不再是满屏方框。
+#
+# 前置：本仓库（fork）已应用 patch/0001-android-bundled-chinese-font.patch，
+#       且 crates/ui-egui/assets/fonts/NotoSansSC-Regular-subset.ttf 已提交。
+#
+# 触发：Actions 页面 → 本工作流 → Run workflow；或推送 v*-zh* 标签。
+
+name: 构建中文版 APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      abis:
+        description: '目标 ABI（逗号分隔，手机用 arm64-v8a；模拟器加 x86_64）'
+        required: false
+        default: 'arm64-v8a'
+      version_name:
+        description: 'versionName（留空则沿用 gradle 里的值）'
+        required: false
+        default: '0.22.1-zh1'
+  push:
+    tags:
+      - 'v*-zh*'
+
+concurrency:
+  group: android-zh-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-apk:
+    name: 编译 .so 并打包 APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: 安装 Android SDK 命令行工具
+        uses: android-actions/setup-android@v3
+
+      - name: 安装 NDK 与 SDK 组件
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          # cargo-ndk 需要一个具体的 NDK；r27b 是稳定的长支持版本
+          sdkmanager --install "ndk;27.2.12479018" > /dev/null
+          # 平台与构建工具缺失时 AGP 也会自动补，这里先装以减少首次构建的不确定性
+          sdkmanager --install "platforms;android-37" "build-tools;36.0.0" > /dev/null 2>&1 || true
+          NDK_DIR="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}/ndk/27.2.12479018"
+          test -d "$NDK_DIR" || { echo "::error::NDK 未安装成功：$NDK_DIR"; exit 1; }
+          echo "ANDROID_NDK_HOME=$NDK_DIR" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$NDK_DIR" >> "$GITHUB_ENV"
+          echo "已就绪 NDK: $NDK_DIR"
+
+      - name: 安装 Rust 与 Android 编译目标
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+          targets: aarch64-linux-android,x86_64-linux-android,armv7-linux-androideabi
+
+      - name: 安装 cargo-ndk
+        run: |
+          set -euo pipefail
+          cargo install cargo-ndk --locked --version "^3"
+
+      - name: 缓存 Cargo 依赖与构建产物
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: solidcraft-android
+
+      - name: 清理 gradle.properties 里的 Windows 专用路径
+        run: |
+          set -euo pipefail
+          # 上游把临时目录写成了 D:/SolidCraftAndroid/tmp，Linux runner 上会直接失败
+          sed -i 's#-Djava.io.tmpdir=[^ ]*##g' android/gradle.properties
+          sed -i 's#org.gradle.jvmargs=#org.gradle.jvmargs=-Xmx3g #' android/gradle.properties
+          sed -i 's#org.gradle.workers.max=.*#org.gradle.workers.max=4#' android/gradle.properties
+          echo "----- android/gradle.properties -----"
+          cat android/gradle.properties
+
+      - name: 确认内置中文字体已就位
+        run: |
+          set -euo pipefail
+          FONT=crates/ui-egui/assets/fonts/NotoSansSC-Regular-subset.ttf
+          test -f "$FONT" || { echo "::error::缺少内置字体 $FONT（先应用 patch/0001 并提交字体文件）"; exit 1; }
+          ls -l "$FONT"
+          grep -q 'BUNDLED_CHINESE_FONT' crates/ui-egui/src/fonts.rs \
+            || { echo "::error::crates/ui-egui/src/fonts.rs 未打上 BUNDLED_CHINESE_FONT 补丁"; exit 1; }
+          echo "内置字体与补丁均在位"
+
+      - name: 编译 Rust 动态库（cargo-ndk）
+        run: |
+          set -euo pipefail
+          ABIS="${{ github.event.inputs.abis }}"
+          ABIS="${ABIS:-arm64-v8a}"
+          echo "目标 ABI: $ABIS"
+          cargo ndk -t "$ABIS" -o android/app/src/main/jniLibs build \
+            -p solidcraft-android --profile android-small
+          echo "----- jniLibs -----"
+          find android/app/src/main/jniLibs -name '*.so' -exec ls -lh {} \;
+
+      - name: 可选：改写 APK 版本号
+        run: |
+          set -euo pipefail
+          VN="${{ github.event.inputs.version_name }}"
+          if [ -n "$VN" ]; then
+            sed -i "s/versionName = \".*\"/versionName = \"$VN\"/" android/app/build.gradle.kts
+            sed -i 's/versionCode = [0-9]*/versionCode = 2301/' android/app/build.gradle.kts
+            grep -n 'versionName\|versionCode' android/app/build.gradle.kts
+          fi
+
+      - name: 构建 APK
+        working-directory: android
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew assembleRelease --no-daemon --stacktrace
+
+      - name: 收集 APK
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          find android/app/build -name '*.apk' -exec cp -v {} out/ \;
+          ls -lh out/
+          for f in out/*.apk; do sha256sum "$f"; done
+
+      - name: 上传 APK 产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: solidcraft-zh-apk
+          path: out/*.apk
+          if-no-files-found: error
+          retention-days: 30
