@@ -22,6 +22,8 @@ egui = { workspace = true }
 log = { workspace = true }
 eframe = { workspace = true, features = ["default_fonts", "wgpu", "android-native-activity"] }
 android_logger = "0.15"
+# control_server 的随机 token 工具（Android 版用固定 token，仍需要该 crate 的函数）
+getrandom = "0.3"
 serde = { workspace = true }
 serde_json = { workspace = true }
 # MainActivity.java (pickers, clipboard, keyboard) through JNI; ndk-context holds the VM and activity.

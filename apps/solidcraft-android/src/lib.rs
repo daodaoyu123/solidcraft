@@ -7,6 +7,7 @@
 #![cfg(target_os = "android")]
 
 mod bridge;
+mod control_server;
 mod net;
 mod smb_core;
 mod smb_ui;
@@ -30,6 +31,12 @@ const DRAWER_WIDTH: f32 = 320.0;
 /// Room (points) left between a focused field and the soft keyboard.
 const PAN_MARGIN: f32 = 24.0;
 const TABLET_SCALE: f32 = 1.25;
+/// 控制通道的端口（只监听 127.0.0.1，token 见 [`control_server::CONTROL_TOKEN`]）。
+///
+/// 桌面版把端口写进发现文件让 `solidcraft-cli mcp` 自己找；手机上没有可写的数据目录，
+/// 所以固定端口，由使用方直接按 127.0.0.1:27878 连接。
+const CONTROL_PORT: u16 = 27878;
+
 /// Autosave for crash recovery, as the desktop app's default.
 const AUTOSAVE: std::time::Duration = std::time::Duration::from_secs(60);
 
@@ -280,7 +287,14 @@ fn android_main(android_app: AndroidApp) {
                 secrets: Some(std::sync::Arc::new(net::Keystore)),
                 ..Default::default()
             };
-            let mut app = SolveApp::new(Session::default(), services);
+            // 控制通道（docs/control-protocol.md）：桌面版由 apps/solidcraft 启动，APK 原本没有，
+            // 于是手机上任何脚本都驱动不了模型。这里把它拉起来：只监听 127.0.0.1、JSON lines、
+            // 每次连接要 token。请求的每帧处理沿用 ui-egui 的 drain_control，无需在此另写。
+            let control_rx = control_server::start(
+                solidcraft_engine::control_auth::Listen::Exact(CONTROL_PORT),
+                cc.egui_ctx.clone(),
+            );
+            let mut app = SolveApp::new(Session::default(), services).with_control(control_rx);
             // As on desktop: a slow OK, undo or history change computes off the window thread, so
             // Android's input watchdog (5 s) never sees the app stop answering.
             app.apply_off_thread = Some(solidcraft_ui_egui::dialogs::APPLY_AT_ONCE);
