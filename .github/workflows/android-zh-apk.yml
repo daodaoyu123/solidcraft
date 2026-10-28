@@ -154,6 +154,12 @@ jobs:
             grep -n 'versionName\|versionCode' android/app/build.gradle.kts
           fi
 
+      - name: 复用固定的签名密钥（避免每版 APK 签名都变、装机必须先卸载）
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: solidcraft-android-debug-keystore-v1
+
       - name: 构建 APK
         working-directory: android
         run: |
