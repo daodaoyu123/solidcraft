@@ -8,6 +8,13 @@
 #       且 crates/ui-egui/assets/fonts/NotoSansSC-Regular-subset.ttf 已提交。
 #
 # 触发：Actions 页面 → 本工作流 → Run workflow；或推送 v*-zh* 标签。
+#
+# 说明（踩过的坑，别改回去）：
+#   1. 不要用 android-actions/setup-android —— 它内部执行 `sdkmanager tools`，
+#      而 `tools` 包已被 Google 从 SDK 仓库删除，该 action 会直接失败（实测 run 40626779775）。
+#      Ubuntu runner 自带 Android SDK 与 cmdline-tools，直接用它即可。
+#   2. compileSdk = 37 在 SDK 仓库里没有裸 `platforms;android-37`，只有 37.0 / 37.1 / 37.2。
+#   3. 上游 gradle.properties 把临时目录写成 Windows 路径 D:/SolidCraftAndroid/tmp，Linux 上必须清掉。
 
 name: 构建中文版 APK
 
@@ -34,7 +41,7 @@ jobs:
   build-apk:
     name: 编译 .so 并打包 APK
     runs-on: ubuntu-latest
-    timeout-minutes: 240
+    timeout-minutes: 300
 
     steps:
       - name: 检出代码
@@ -46,22 +53,48 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - name: 安装 Android SDK 命令行工具
-        uses: android-actions/setup-android@v3
-
-      - name: 安装 NDK 与 SDK 组件
+      - name: 准备 Android SDK 与 NDK
         run: |
           set -euo pipefail
-          yes | sdkmanager --licenses > /dev/null 2>&1 || true
-          # cargo-ndk 需要一个具体的 NDK；r27b 是稳定的长支持版本
-          sdkmanager --install "ndk;27.2.12479018" > /dev/null
-          # 平台与构建工具缺失时 AGP 也会自动补，这里先装以减少首次构建的不确定性
-          sdkmanager --install "platforms;android-37" "build-tools;36.0.0" > /dev/null 2>&1 || true
-          NDK_DIR="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}/ndk/27.2.12479018"
-          test -d "$NDK_DIR" || { echo "::error::NDK 未安装成功：$NDK_DIR"; exit 1; }
-          echo "ANDROID_NDK_HOME=$NDK_DIR" >> "$GITHUB_ENV"
-          echo "ANDROID_NDK_ROOT=$NDK_DIR" >> "$GITHUB_ENV"
-          echo "已就绪 NDK: $NDK_DIR"
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          test -d "$SDK_ROOT" || { echo "::error::找不到 Android SDK：$SDK_ROOT"; exit 1; }
+          echo "SDK 根目录：$SDK_ROOT"
+
+          # 找 sdkmanager：PATH → SDK 自带 cmdline-tools → 兜底下载
+          SDKMANAGER="$(command -v sdkmanager || true)"
+          if [ -z "$SDKMANAGER" ]; then
+            SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -maxdepth 3 -name sdkmanager -type f 2>/dev/null | sort | tail -1 || true)"
+          fi
+          if [ -z "$SDKMANAGER" ]; then
+            echo "::warning::未找到 sdkmanager，下载 commandline-tools"
+            curl -sSL -o /tmp/cmdtools.zip https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip
+            unzip -q /tmp/cmdtools.zip -d /tmp/cmdtools
+            mkdir -p "$SDK_ROOT/cmdline-tools"
+            rm -rf "$SDK_ROOT/cmdline-tools/latest"
+            mv /tmp/cmdtools/cmdline-tools "$SDK_ROOT/cmdline-tools/latest"
+            SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          fi
+          echo "sdkmanager：$SDKMANAGER"
+
+          yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+
+          # cargo-ndk 需要一个具体 NDK；r27b 长期支持且与 rustc 的 android target 兼容
+          "$SDKMANAGER" --install "ndk;27.2.12479018" > /dev/null
+          # API 37 只有 37.0/37.1/37.2；build-tools 36.0.0 在仓库里确认存在
+          "$SDKMANAGER" --install "platforms;android-37.0" "build-tools;36.0.0" > /dev/null 2>&1 || true
+
+          NDK="$SDK_ROOT/ndk/27.2.12479018"
+          test -d "$NDK" || { echo "::error::NDK 未安装：$NDK"; exit 1; }
+          {
+            echo "ANDROID_SDK_ROOT=$SDK_ROOT"
+            echo "ANDROID_HOME=$SDK_ROOT"
+            echo "ANDROID_NDK_HOME=$NDK"
+            echo "ANDROID_NDK_ROOT=$NDK"
+          } >> "$GITHUB_ENV"
+
+          echo "----- platforms -----"; ls "$SDK_ROOT/platforms" 2>/dev/null || true
+          echo "----- build-tools -----"; ls "$SDK_ROOT/build-tools" 2>/dev/null || true
+          echo "----- ndk -----"; ls "$SDK_ROOT/ndk" 2>/dev/null || true
 
       - name: 安装 Rust 与 Android 编译目标
         uses: dtolnay/rust-toolchain@stable
@@ -72,7 +105,9 @@ jobs:
       - name: 安装 cargo-ndk
         run: |
           set -euo pipefail
-          cargo install cargo-ndk --locked --version "^3"
+          # 不锁大版本：锁死 ^3 会在 crates.io 上主版本前进后装不上
+          cargo install cargo-ndk --locked
+          cargo ndk --version
 
       - name: 缓存 Cargo 依赖与构建产物
         uses: Swatinem/rust-cache@v2
@@ -82,7 +117,6 @@ jobs:
       - name: 清理 gradle.properties 里的 Windows 专用路径
         run: |
           set -euo pipefail
-          # 上游把临时目录写成了 D:/SolidCraftAndroid/tmp，Linux runner 上会直接失败
           sed -i 's#-Djava.io.tmpdir=[^ ]*##g' android/gradle.properties
           sed -i 's#org.gradle.jvmargs=#org.gradle.jvmargs=-Xmx3g #' android/gradle.properties
           sed -i 's#org.gradle.workers.max=.*#org.gradle.workers.max=4#' android/gradle.properties
@@ -104,7 +138,7 @@ jobs:
           set -euo pipefail
           ABIS="${{ github.event.inputs.abis }}"
           ABIS="${ABIS:-arm64-v8a}"
-          echo "目标 ABI: $ABIS"
+          echo "目标 ABI：$ABIS  |  NDK：${ANDROID_NDK_HOME}"
           cargo ndk -t "$ABIS" -o android/app/src/main/jniLibs build \
             -p solidcraft-android --profile android-small
           echo "----- jniLibs -----"
